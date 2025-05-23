@@ -24,33 +24,16 @@ if not os.path.exists(nltk_data_dir):
     os.makedirs(nltk_data_dir)
 nltk.data.path.append(nltk_data_dir)
 
-# Download NLTK data with error handling - hanya jika belum ada
-@st.cache_resource
-def setup_nltk():
-    try:
-        # Cek apakah data sudah ada
-        punkt_path = os.path.join(nltk_data_dir, 'tokenizers', 'punkt_tab')
-        stopwords_path = os.path.join(nltk_data_dir, 'corpora', 'stopwords')
-        
-        if not os.path.exists(punkt_path):
-            nltk.download('punkt_tab', download_dir=nltk_data_dir, quiet=True)
-        if not os.path.exists(stopwords_path):
-            nltk.download('stopwords', download_dir=nltk_data_dir, quiet=True)
-        return True
-    except Exception as e:
-        st.error(f"Failed to download NLTK data: {str(e)}")
-        return False
-
-# Setup NLTK
-if not setup_nltk():
+# Download NLTK data with error handling
+try:
+    nltk.download('punkt_tab', download_dir=nltk_data_dir)
+    nltk.download('stopwords', download_dir=nltk_data_dir)
+except Exception as e:
+    st.error(f"Failed to download NLTK data: {str(e)}. Please ensure you have internet access and write permissions.")
     st.stop()
 
-# Inisialisasi NLTK dengan caching
-@st.cache_resource
-def get_stop_words():
-    return set(stopwords.words('indonesian'))
-
-stop_words = get_stop_words()
+# Inisialisasi NLTK
+stop_words = set(stopwords.words('indonesian'))
 
 # Konfigurasi Grok AI
 GROK_API_KEY = "xai-oANOG2INjZRhmPtTbDBwNNQvYWtrfZGr67msIs0jZWG9OOq9b99qeYXH88nEso37hSKiXREdhUnD1mVh"
@@ -71,10 +54,7 @@ def remove_stop_words(text):
     word_tokens_no_stopwords = [w for w in text if w not in stop_words]
     return word_tokens_no_stopwords
 
-# Fungsi preprocessing teks yang dioptimasi
-@st.cache_data
-def preprocess_cached(text):
-    """Cached preprocessing untuk menghindari pemrosesan berulang"""
+def preprocess(text):
     text = clean(text)
     text = tokenize(text)
     text = remove_stop_words(text)
@@ -424,20 +404,19 @@ st.markdown('<div class="main">', unsafe_allow_html=True)
 st.markdown('<h1 class="title">VALIDIN</h1>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle">Deteksi berita hoax dengan cepat dan akurat menggunakan AI canggih + Rekomendasi dari Grok AI.</p>', unsafe_allow_html=True)
 
-# Status Grok AI - optimasi check koneksi
-@st.cache_data(ttl=300)  # Cache selama 5 menit
-def check_grok_status():
-    try:
-        response = requests.get("https://api.x.ai", timeout=3)
-        return True, "🟢 Grok AI Online"
-    except:
-        return False, "🔴 Grok AI Offline (Menggunakan mode fallback)"
-
+# Status Grok AI
 with st.container():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        grok_online, grok_status = check_grok_status()
-        status_class = "status-online" if grok_online else "status-offline"
+        # Test koneksi Grok AI
+        try:
+            test_response = requests.get("https://api.x.ai", timeout=5)
+            grok_status = "🟢 Grok AI Online"
+            status_class = "status-online"
+        except:
+            grok_status = "🔴 Grok AI Offline (Menggunakan mode fallback)"
+            status_class = "status-offline"
+        
         st.markdown(f'<div class="status-indicator {status_class}">{grok_status}</div>', unsafe_allow_html=True)
 
 # Konten utama dalam card
@@ -469,7 +448,7 @@ with st.container():
             progress_bar.progress(25)
             
             # Preprocessing teks
-            processed_text = preprocess_cached(news_text)
+            processed_text = preprocess(news_text)
             text_seq = tokenizer.texts_to_sequences([" ".join(processed_text)])
             
             if not text_seq[0]:
