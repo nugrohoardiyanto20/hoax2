@@ -4,6 +4,7 @@ import numpy as np
 import nltk
 import re
 import string
+import os
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 from tensorflow.keras.models import load_model
@@ -11,14 +12,29 @@ from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 import pickle
 
+# Set page config
+st.set_page_config(page_title="Validin", page_icon="📰", layout="wide")
+
+# Set custom NLTK data directory to a writable location
+nltk_data_dir = os.path.join(os.getcwd(), "nltk_data")
+if not os.path.exists(nltk_data_dir):
+    os.makedirs(nltk_data_dir)
+nltk.data.path.append(nltk_data_dir)
+
+# Download NLTK data with error handling
+try:
+    nltk.download('punkt_tab', download_dir=nltk_data_dir)
+    nltk.download('stopwords', download_dir=nltk_data_dir)
+except Exception as e:
+    st.error(f"Failed to download NLTK data: {str(e)}. Please ensure you have internet access and write permissions.")
+    st.stop()
+
 # Inisialisasi NLTK
-nltk.download('punkt_tab')
-nltk.download('stopwords')
 stop_words = set(stopwords.words('indonesian'))
 
-# Fungsi preprocessing teks (sama dengan kode Anda)
+# Fungsi preprocessing teks
 def clean(text):
-    text = text.lower()
+    text = str(text).lower()
     text = ' '.join(re.sub("(@[A-Za-z0-9]+)|([^0-9A-Za-z \t])|(\w+:\/\/\S+)", " ", text).split())
     punct = set(string.punctuation)
     text = "".join([ch for ch in text if ch not in punct])
@@ -28,7 +44,7 @@ def tokenize(text):
     return word_tokenize(text)
 
 def remove_stop_words(text):
-    word_tokens_no_stopwords = [w for w in text if not w in stop_words]
+    word_tokens_no_stopwords = [w for w in text if w not in stop_words]
     return word_tokens_no_stopwords
 
 def preprocess(text):
@@ -37,7 +53,7 @@ def preprocess(text):
     text = remove_stop_words(text)
     return text
 
-# Cache model dan tokenizer untuk efisiensi
+# Cache model dan tokenizer
 @st.cache_resource
 def load_lstm_model():
     return load_model('hoax_lstm_model.h5')
@@ -51,42 +67,146 @@ def load_tokenizer():
 model = load_lstm_model()
 tokenizer = load_tokenizer()
 
-# Parameter tokenisasi (sesuaikan dengan kode pelatihan)
-max_features = 1000
+# Parameter tokenisasi
+max_features = 5000
+max_len = 300
+
+# Custom CSS untuk tampilan modern
+st.markdown("""
+    <style>
+    /* Reset default Streamlit styles */
+    .stApp {
+        background-color: #F3F4F6;
+        font-family: 'Inter', sans-serif;
+    }
+    /* Import font */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    /* Main container */
+    .main {
+        background-color: #F3F4F6;
+        min-height: 100vh;
+        padding: 2rem;
+    }
+    /* Header */
+    .title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #1E3A8A;
+        text-align: center;
+        margin-bottom: 0.5rem;
+    }
+    .subtitle {
+        font-size: 1.2rem;
+        color: #4B5563;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    /* Card untuk input */
+    .card {
+        background-color: #FFFFFF;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        margin: 0 auto;
+        max-width: 800px;
+    }
+    /* Text Area */
+    div[data-testid="stTextArea"] textarea {
+        border: 1px solid #D1D5DB !important;
+        border-radius: 8px !important;
+        padding: 1rem !important;
+        font-size: 1rem !important;
+        background-color: #F9FAFB !important;
+    }
+    div[data-testid="stTextArea"] textarea:focus {
+        border-color: #1E3A8A !important;
+        box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1) !important;
+    }
+    /* Button */
+    div[data-testid="stButton"] button {
+        background-color: #1E3A8A !important;
+        color: white !important;
+        border-radius: 8px !important;
+        padding: 0.75rem 2rem !important;
+        font-size: 1.1rem !important;
+        font-weight: 500 !important;
+        transition: background-color 0.3s ease !important;
+    }
+    div[data-testid="stButton"] button:hover {
+        background-color: #1C2F6B !important;
+    }
+    /* Result Box */
+    .result-box {
+        padding: 1.5rem;
+        border-radius: 8px;
+        margin-top: 1.5rem;
+        font-size: 1.1rem;
+        font-weight: 500;
+    }
+    .success {
+        background-color: #ECFDF5;
+        color: #065F46;
+        border: 1px solid #10B981;
+    }
+    .error {
+        background-color: #FEF2F2;
+        color: #991B1B;
+        border: 1px solid #EF4444;
+    }
+    /* Footer */
+    .footer {
+        text-align: center;
+        color: #6B7280;
+        margin-top: 3rem;
+        font-size: 0.9rem;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 # UI Streamlit
-st.set_page_config(page_title="HoaxBuster", page_icon="📰", layout="wide")
-st.title("📰 HoaxBuster: Deteksi Berita Hoax")
-st.markdown("""
-    Masukkan teks berita di bawah ini untuk memeriksa apakah berita tersebut **hoax** atau **valid**.
-    Aplikasi ini menggunakan model LSTM untuk analisis teks berbahasa Indonesia.
-""")
+st.markdown('<div class="main">', unsafe_allow_html=True)
 
-# Input teks
-news_text = st.text_area("Teks Berita", placeholder="Tempel teks berita di sini...", height=200)
+# Header
+st.markdown('<h1 class="title">VALIDIN</h1>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Deteksi berita hoax dengan cepat dan akurat menggunakan AI canggih.</p>', unsafe_allow_html=True)
 
-# Tombol prediksi
-if st.button("🔍 Periksa Berita", type="primary"):
-    if news_text.strip() == "":
-        st.warning("Mohon masukkan teks berita!", icon="⚠️")
-    else:
-        with st.spinner("Menganalisis teks..."):
-            # Preprocessing teks
-            processed_text = preprocess(news_text)
-            text_seq = tokenizer.texts_to_sequences([" ".join(processed_text)])
-            text_padded = pad_sequences(sequences=text_seq, maxlen=max_features, padding='pre')
+# Konten utama dalam card
+with st.container():
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    
+    # Input teks
+    news_text = st.text_area("Masukkan Teks Berita", placeholder="Tempel teks berita di sini...", height=200)
 
-            # Prediksi
-            prediction = model.predict(text_padded)
-            pred_class = np.argmax(prediction, axis=1)[0]
-            pred_prob = prediction[0][pred_class] * 100
+    # Tombol prediksi
+    if st.button("🔍 Periksa Sekarang", type="primary"):
+        if news_text.strip() == "":
+            st.markdown('<div class="result-box error">⚠️ Mohon masukkan teks berita!</div>', unsafe_allow_html=True)
+        else:
+            with st.spinner("Menganalisis..."):
+                # Preprocessing teks
+                processed_text = preprocess(news_text)
+                text_seq = tokenizer.texts_to_sequences([" ".join(processed_text)])
+                if not text_seq[0]:
+                    st.markdown('<div class="result-box error">⚠️ Teks tidak dapat diproses. Pastikan teks relevan.</div>', unsafe_allow_html=True)
+                    st.stop()
+                text_padded = pad_sequences(sequences=text_seq, maxlen=max_len, padding='pre')
+                
+                # Prediksi
+                prediction = model.predict(text_padded)
+                threshold = 0.6
+                hoax_prob = prediction[0][1]
+                pred_class = 1 if hoax_prob > threshold else 0
+                pred_prob = hoax_prob * 100 if pred_class == 1 else (1 - hoax_prob) * 100
 
-            # Tampilkan hasil
-            if pred_class == 1:
-                st.error(f"**Peringatan**: Berita ini kemungkinan **HOAX** (Kepercayaan: {pred_prob:.2f}%)", icon="🚨")
-            else:
-                st.success(f"**Hasil**: Berita ini kemungkinan **VALID** (Kepercayaan: {pred_prob:.2f}%)", icon="✅")
+                # Tampilkan hasil
+                if pred_class == 1:
+                    st.markdown(f'<div class="result-box error">🚨 <b>Peringatan</b>: Berita ini kemungkinan <b>HOAX</b> (Kepercayaan: {pred_prob:.2f}%)</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'<div class="result-box success">✅ <b>Hasil</b>: Berita ini kemungkinan <b>VALID</b> (Kepercayaan: {pred_prob:.2f}%)</div>', unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # Footer
-st.markdown("---")
-st.markdown("© 2025 HoaxBuster. Dibuat untuk mendeteksi berita hoax dengan AI.")
+st.markdown('<p class="footer">© 2025 Validin.</p>', unsafe_allow_html=True)
+
+st.markdown('</div>', unsafe_allow_html=True)
