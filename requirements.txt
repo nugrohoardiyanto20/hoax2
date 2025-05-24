@@ -7,3 +7,5 @@ nltk==3.9.1
 scikit-learn==1.5.1
 tensorflow==2.17.0
 keras==3.5.0
+requests==2.32.3
+pickle-mixin==1.0.2
