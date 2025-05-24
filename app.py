@@ -35,9 +35,9 @@ except Exception as e:
 # Inisialisasi NLTK
 stop_words = set(stopwords.words('indonesian'))
 
-# Konfigurasi Grok AI
-GROK_API_KEY = "xai-oANOG2INjZRhmPtTbDBwNNQvYWtrfZGr67msIs0jZWG9OOq9b99qeYXH88nEso37hSKiXREdhUnD1mVh"
-GROK_API_URL = "https://api.x.ai/v1/chat/completions"
+# Konfigurasi Google Gemini API
+GEMINI_API_KEY = "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"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent"
 
 # Fungsi preprocessing teks
 def clean(text):
@@ -70,22 +70,17 @@ def load_tokenizer():
     with open('tokenizer.pkl', 'rb') as handle:
         return pickle.load(handle)
 
-# Fungsi untuk mendapatkan rekomendasi dari Grok AI
-def get_grok_recommendations(news_text, prediction_result, confidence):
+# Fungsi untuk mendapatkan rekomendasi dari Google Gemini
+def get_gemini_recommendations(news_text, prediction_result, confidence):
     """
-    Mendapatkan rekomendasi dari Grok AI berdasarkan hasil prediksi
+    Mendapatkan rekomendasi dari Google Gemini berdasarkan hasil prediksi
     """
     try:
-        headers = {
-            "Authorization": f"Bearer {GROK_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
         # Tentukan status berita
         status = "HOAX" if prediction_result == 1 else "VALID"
         confidence_level = "tinggi" if confidence > 80 else "sedang" if confidence > 60 else "rendah"
         
-        # Buat prompt yang lebih detailed untuk Grok AI
+        # Buat prompt yang lebih detailed untuk Gemini
         prompt = f"""
         Sebagai AI assistant yang ahli dalam analisis berita dan media literacy, berikan rekomendasi dan saran yang berguna untuk pengguna.
 
@@ -121,58 +116,66 @@ def get_grok_recommendations(news_text, prediction_result, confidence):
         Gunakan bahasa Indonesia yang mudah dipahami, profesional, dan memberikan nilai tambah yang jelas untuk pengguna.
         """
         
-        data = {
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "Anda adalah AI assistant yang ahli dalam analisis berita dan media literacy. Berikan rekomendasi yang praktis, akurat, dan mudah dipahami dalam bahasa Indonesia."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            "model": "grok-beta",
-            "stream": False,
-            "temperature": 0.7,
-            "max_tokens": 1500
+        # Prepare request data for Gemini API
+        headers = {
+            "Content-Type": "application/json"
         }
+        
+        data = {
+            "contents": [{
+                "parts": [{
+                    "text": prompt
+                }]
+            }],
+            "generationConfig": {
+                "temperature": 0.7,
+                "topK": 40,
+                "topP": 0.95,
+                "maxOutputTokens": 1500,
+            }
+        }
+        
+        # Add API key to URL
+        url_with_key = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
         
         # Retry mechanism
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                response = requests.post(GROK_API_URL, headers=headers, json=data, timeout=45)
+                response = requests.post(url_with_key, headers=headers, json=data, timeout=30)
                 
                 if response.status_code == 200:
                     result = response.json()
-                    return result['choices'][0]['message']['content']
+                    if 'candidates' in result and len(result['candidates']) > 0:
+                        return result['candidates'][0]['content']['parts'][0]['text']
+                    else:
+                        return "Error: Respons dari Gemini tidak sesuai format yang diharapkan."
                 elif response.status_code == 429:
                     # Rate limit, wait and retry
                     time.sleep(2 ** attempt)
                     continue
                 else:
-                    return f"Error: Grok AI merespons dengan kode {response.status_code}. Pesan: {response.text}"
+                    return f"Error: Google Gemini merespons dengan kode {response.status_code}."
                     
             except requests.exceptions.Timeout:
                 if attempt < max_retries - 1:
                     time.sleep(1)
                     continue
-                return "Error: Timeout - Grok AI tidak merespons dalam waktu yang ditentukan. Silakan coba lagi."
+                return "Error: Timeout - Google Gemini tidak merespons dalam waktu yang ditentukan."
             except requests.exceptions.RequestException as e:
                 if attempt < max_retries - 1:
                     time.sleep(1)
                     continue
-                return f"Error: Masalah koneksi ke Grok AI - {str(e)}"
+                return f"Error: Masalah koneksi ke Google Gemini."
         
-        return "Error: Tidak dapat terhubung ke Grok AI setelah beberapa percobaan."
+        return "Error: Tidak dapat terhubung ke Google Gemini setelah beberapa percobaan."
             
     except Exception as e:
         return f"Error: Terjadi kesalahan tidak terduga - {str(e)}"
 
 def get_fallback_recommendations(prediction_result, confidence):
     """
-    Memberikan rekomendasi fallback jika Grok AI tidak tersedia
+    Memberikan rekomendasi fallback jika Gemini tidak tersedia
     """
     status = "HOAX" if prediction_result == 1 else "VALID"
     
@@ -246,20 +249,16 @@ max_len = 300
 # Custom CSS untuk tampilan modern
 st.markdown("""
     <style>
-    /* Reset default Streamlit styles */
     .stApp {
         background-color: #F3F4F6;
         font-family: 'Inter', sans-serif;
     }
-    /* Import font */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-    /* Main container */
     .main {
         background-color: #F3F4F6;
         min-height: 100vh;
         padding: 2rem;
     }
-    /* Header */
     .title {
         font-size: 2.5rem;
         font-weight: 700;
@@ -273,7 +272,6 @@ st.markdown("""
         text-align: center;
         margin-bottom: 2rem;
     }
-    /* Card untuk input */
     .card {
         background-color: #FFFFFF;
         padding: 2rem;
@@ -282,7 +280,6 @@ st.markdown("""
         margin: 0 auto;
         max-width: 800px;
     }
-    /* Text Area */
     div[data-testid="stTextArea"] textarea {
         border: 1px solid #D1D5DB !important;
         border-radius: 8px !important;
@@ -294,7 +291,6 @@ st.markdown("""
         border-color: #1E3A8A !important;
         box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1) !important;
     }
-    /* Button */
     div[data-testid="stButton"] button {
         background-color: #1E3A8A !important;
         color: white !important;
@@ -307,7 +303,6 @@ st.markdown("""
     div[data-testid="stButton"] button:hover {
         background-color: #1C2F6B !important;
     }
-    /* Result Box */
     .result-box {
         padding: 1.5rem;
         border-radius: 8px;
@@ -325,7 +320,6 @@ st.markdown("""
         color: #991B1B;
         border: 1px solid #EF4444;
     }
-    /* Recommendation Box */
     .recommendation-box {
         background-color: #F8FAFC;
         border: 1px solid #E2E8F0;
@@ -360,21 +354,12 @@ st.markdown("""
     .recommendation-content strong {
         color: #1F2937;
     }
-    /* Footer */
     .footer {
         text-align: center;
         color: #6B7280;
         margin-top: 3rem;
         font-size: 0.9rem;
     }
-    /* Loading animation */
-    .loading-text {
-        color: #0369A1;
-        font-style: italic;
-        text-align: center;
-        padding: 1rem;
-    }
-    /* Status indicators */
     .status-indicator {
         display: inline-flex;
         align-items: center;
@@ -402,22 +387,27 @@ st.markdown('<div class="main">', unsafe_allow_html=True)
 
 # Header
 st.markdown('<h1 class="title">VALIDIN</h1>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Deteksi berita hoax dengan cepat dan akurat menggunakan AI canggih + Rekomendasi dari Grok AI.</p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Deteksi berita hoax dengan cepat dan akurat menggunakan AI canggih + Rekomendasi dari Google Gemini.</p>', unsafe_allow_html=True)
 
-# Status Grok AI
+# Status Google Gemini
 with st.container():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        # Test koneksi Grok AI
+        # Test koneksi Google Gemini
         try:
-            test_response = requests.get("https://api.x.ai", timeout=5)
-            grok_status = "🟢 Grok AI Online"
-            status_class = "status-online"
+            test_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
+            test_response = requests.get(test_url, timeout=5)
+            if test_response.status_code == 200:
+                gemini_status = "🟢 Google Gemini Online"
+                status_class = "status-online"
+            else:
+                gemini_status = "🔴 Google Gemini Offline (Menggunakan mode fallback)"
+                status_class = "status-offline"
         except:
-            grok_status = "🔴 Grok AI Offline (Menggunakan mode fallback)"
+            gemini_status = "🔴 Google Gemini Offline (Menggunakan mode fallback)"
             status_class = "status-offline"
         
-        st.markdown(f'<div class="status-indicator {status_class}">{grok_status}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="status-indicator {status_class}">{gemini_status}</div>', unsafe_allow_html=True)
 
 # Konten utama dalam card
 with st.container():
@@ -481,14 +471,14 @@ with st.container():
                 st.markdown(f'<div class="result-box success">{confidence_emoji} <b>Hasil</b>: Berita ini kemungkinan <b>VALID</b> (Kepercayaan: {pred_prob:.2f}%)</div>', unsafe_allow_html=True)
 
             # Tahap 4: Mendapatkan rekomendasi
-            status_text.text("🤖 Mendapatkan rekomendasi dari Grok AI...")
+            status_text.text("🤖 Mendapatkan rekomendasi dari Google Gemini...")
             progress_bar.progress(100)
             
-            # Mendapatkan rekomendasi dari Grok AI
+            # Mendapatkan rekomendasi dari Google Gemini
             st.markdown('<div class="recommendation-box">', unsafe_allow_html=True)
             st.markdown('<div class="recommendation-title">🤖 Rekomendasi & Analisis Lanjutan</div>', unsafe_allow_html=True)
             
-            recommendations = get_grok_recommendations(news_text, pred_class, pred_prob)
+            recommendations = get_gemini_recommendations(news_text, pred_class, pred_prob)
             
             if recommendations.startswith("Error:"):
                 st.markdown(f'<div class="recommendation-content" style="color: #DC2626;">❌ {recommendations}</div>', unsafe_allow_html=True)
@@ -514,7 +504,7 @@ with st.expander("ℹ️ Tentang Aplikasi"):
     
     **🧠 Teknologi yang Digunakan:**
     - **Model LSTM Deep Learning** untuk klasifikasi teks berita Indonesia
-    - **Grok AI** untuk memberikan rekomendasi dan analisis lanjutan
+    - **Google Gemini AI** untuk memberikan rekomendasi dan analisis lanjutan
     - **Natural Language Processing (NLP)** untuk preprocessing teks
     - **Sistem Fallback** untuk memastikan selalu ada rekomendasi
     
@@ -523,7 +513,7 @@ with st.expander("ℹ️ Tentang Aplikasi"):
     2. **Preprocessing**: Sistem membersihkan dan memproses teks
     3. **Analisis AI**: Model LSTM menganalisis pola dalam teks
     4. **Prediksi**: Sistem memberikan klasifikasi HOAX atau VALID
-    5. **Rekomendasi**: Grok AI memberikan saran verifikasi dan tindakan
+    5. **Rekomendasi**: Google Gemini memberikan saran verifikasi dan tindakan
     
     **📊 Tingkat Akurasi:**
     - Model telah dilatih dengan ribuan artikel berita Indonesia
@@ -555,7 +545,7 @@ with st.expander("📖 Panduan Penggunaan"):
        - **VALID**: Berita kemungkinan dapat dipercaya
        - Perhatikan tingkat kepercayaan (confidence level)
     
-    4. **Ikuti Rekomendasi Grok AI**
+    4. **Ikuti Rekomendasi Google Gemini**
        - Baca saran verifikasi yang diberikan
        - Ikuti langkah-langkah fact-checking
        - Terapkan tips media literacy
@@ -576,7 +566,7 @@ with st.expander("❓ Frequently Asked Questions"):
     **Q: Apa yang dimaksud dengan "tingkat kepercayaan"?**
     A: Tingkat kepercayaan menunjukkan seberapa yakin sistem terhadap prediksinya. Semakin tinggi persentasenya, semakin yakin sistem.
     
-    **Q: Bagaimana jika Grok AI offline?**
+    **Q: Bagaimana jika Google Gemini offline?**
     A: Sistem memiliki mode fallback yang akan memberikan rekomendasi standar berdasarkan hasil prediksi.
     
     **Q: Bisakah sistem mendeteksi semua jenis hoax?**
@@ -590,6 +580,6 @@ with st.expander("❓ Frequently Asked Questions"):
     """)
 
 # Footer
-st.markdown('<p class="footer">© 2025 Validin - Powered by AI & Grok AI | Melawan Hoax dengan Teknologi</p>', unsafe_allow_html=True)
+st.markdown('<p class="footer">© 2025 Validin - Powered by AI & Google Gemini | Melawan Hoax dengan Teknologi</p>', unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)
